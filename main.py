@@ -28,7 +28,7 @@ def compile_model(mdl):
         ],
     )
 
-mdnum = '06'
+mdnum = '08'
 fp = f'saved-models/{mdnum}.keras'
 if __name__=='__main__':
     mdl = model.gen_model()
@@ -37,14 +37,14 @@ if __name__=='__main__':
 
     mdl.fit(
         data.data_generator(),
-        epochs=1,
-        steps_per_epoch=data.samples,
+        epochs=30,
+        steps_per_epoch=2000,
         callbacks=[
             keras.callbacks.ModelCheckpoint(
                 fp,
                 monitor="loss",
                 save_best_only=True,
-                save_freq=10_000,
+                save_freq="epoch",
             ),
         ],
     )

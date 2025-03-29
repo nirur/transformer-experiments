@@ -4,13 +4,14 @@ import random
 import numpy as np
 import keras
 
-dset = ("roneneldan/TinyStories",)
-#dset = ("HuggingFaceFW/fineweb",)
-rlens = 20
-samples = 2_000_000
+dset = {
+    "path": "roneneldan/TinyStories",
+}
+#dset = {"path": "HuggingFaceFW/fineweb", "name": "sample-10BT", "streaming": True} #"CC-MAIN-2024-10"
+rlens = 30
 
-mncap = 32
-mxcap = 122
+mncap = 0
+mxcap = 126
 span = mxcap-mncap+1
 
 def onehot(c):
@@ -23,12 +24,9 @@ def arr(seq):
     return np.array([onehot(s) for s in seq])
 
 def data_generator(split="train"):
-    dst = ds.load_dataset(*dset, split=split)
+    dst = ds.load_dataset(**dset, split=split)
     dst = dst.shuffle()
-    n = 0
     for i in dst:
-        if n==samples:
-            break
         i = i['text']
         #seq = np.array([onehot(j) for j in i])
         l = len(i)
@@ -39,15 +37,13 @@ def data_generator(split="train"):
         #    yield X, y
         if l<=rlens:
             continue
-        inds = random.choices(range(l-rlens+1), k=5)
-        X = np.array([
-            arr(i[j:j+rlens])
+        inds = random.choices(range(l-rlens), k=10)
+        v = np.array([
+            arr(i[j:j+rlens+1])
             for j in inds
         ])
-        y = X[:, -1, :].copy()
-        X[:, -1, :] = 0
-        yield X, y
-        n += 1
+        x, y = v[:, :-1, :], v[:, 1:, :]
+        yield x, y
 
 def interpret(charr):
     ind = np.argmax(charr)
