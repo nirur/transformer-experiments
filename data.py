@@ -1,61 +1,52 @@
 import const
 import datasets as ds
+import random
 import numpy as np
 import keras
 
-proportion = 0.00001
 dset = ("roneneldan/TinyStories",)
 rlens = 30
+samples = 1_00_000
 
 mncap = 32
 mxcap = 122
+span = mxcap-mncap+1
 
-def load(split):
-    dst = ds.load_dataset(*dset, split=split)
-    dst = dst.to_list()
-    return dst
-
-def extractText(dst):
-    txs = []
-    for para in dst:
-        tx = para['text']
-        if len(tx)<rlens:
-            continue
-        txs.append(tx)
-    return txs
+def onehot(c):
+    o = min(max(ord(c),mncap),mxcap)
+    out = np.zeros(shape=(span,))
+    out[o-mncap] = 1
+    return out
 
 def arr(seq):
-    out = np.zeros((rlens, mxcap-mncap+1))
-    for j,c in enumerate(seq):
-        o = ord(c)
-        if o<mncap:
-            o = mncap
-        elif o>mxcap:
-            o = mxcap
-        out[j][o-mncap] = 1
-    return out
+    return np.array([onehot(s) for s in seq])
 
-def segment(dst):
-    lns = [len(i) for i in dst]
-    sgs = sum(lns)-(rlens-1)*len(lns)
-    out = np.zeros((sgs, rlens, mxcap-mncap+1))
-    for tx in dst:
-        txs = [tx[i:] for i in range(rlens)]
-        for i,chs in enumerate(zip(*txs)):
-            out[i] = arr(chs)
-    return out
-
-class Data(keras.utils.Sequence):
-    def __init__(self, ):
-        super().__init__()
-    def __data_generation
-
-def gen_dataset(split="train"):
-    dst = load(split)
-    dst = dst[:int(len(dst)*proportion)]
-    dst = extractText(dst)
-    dst = segment(dst)
-    return dst
+def data_generator(split="train"):
+    dst = ds.load_dataset(*dset, split=split)
+    dst = dst.shuffle()
+    n = 0
+    for i in dst:
+        if n==samples:
+            break
+        i = i['text']
+        #seq = np.array([onehot(j) for j in i])
+        l = len(i)
+        #for j in range(l-rlens):
+        #    X = seq[j:j+rlens+1].copy()
+        #    y = X[-1].copy()
+        #    X[-1] = 0
+        #    yield X, y
+        if l<=rlens:
+            continue
+        inds = random.choices(range(l-rlens), k=3)
+        X = np.array([
+            arr(i[j:j+rlens+1])
+            for j in inds
+        ])
+        y = X[:, -1, :].copy()
+        X[:, -1, :] = 0
+        yield X, y
+        n += 1
 
 def interpret(charr):
     ind = np.argmax(charr)

@@ -51,7 +51,7 @@ class AttentionBlock(layers.Layer):
         act = activations.softmax(act)
         vls = i @ self.v
         ret = (act @ vls) + i
-        return (ret @ self.mlp) + self.bias
+        return activations.leaky_relu(ret @ self.mlp) + self.bias
 
 @keras.saving.register_keras_serializable("Transformer")
 class Extract(layers.Layer):
@@ -80,10 +80,10 @@ def gen_model():
             layers.BatchNormalization(),
             AttentionBlock(20, 150),
             layers.BatchNormalization(),
-            #AttentionBlock(30, 250),
-            #layers.BatchNormalization(),
-            #AttentionBlock(30, 250),
-            #layers.BatchNormalization(),
+            AttentionBlock(30, 250),
+            layers.BatchNormalization(),
+            AttentionBlock(30, 250),
+            layers.BatchNormalization(),
             #AttentionBlock(30, 250),
             #layers.BatchNormalization(),
             #AttentionBlock(30, 250),
@@ -120,20 +120,13 @@ def gen_model():
     )
     return model
 
-mdnum = '05'
+mdnum = '06'
 if __name__=='__main__':
     mdl = gen_model()
     print("MODEL GENERATED")
-    dst = data.gen_dataset()
-    answs = np.array(dst[:, -1, :])
-    dst[:, -1, :] = 0
-    print(dst.shape)
-    print("DATA LOADED")
 
     mdl.fit(
-        dst,
-        answs,
-        epochs=1000,
-        batch_size=8192,
+        data.data_generator(),
+        epochs=1,
     )
     mdl.save(f'saved-models/{mdnum}.keras')
