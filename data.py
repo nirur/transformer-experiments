@@ -5,8 +5,9 @@ import numpy as np
 import keras
 
 dset = ("roneneldan/TinyStories",)
-rlens = 30
-samples = 1_00_000
+#dset = ("HuggingFaceFW/fineweb",)
+rlens = 20
+samples = 2_000_000
 
 mncap = 32
 mxcap = 122
@@ -38,9 +39,9 @@ def data_generator(split="train"):
         #    yield X, y
         if l<=rlens:
             continue
-        inds = random.choices(range(l-rlens), k=3)
+        inds = random.choices(range(l-rlens+1), k=5)
         X = np.array([
-            arr(i[j:j+rlens+1])
+            arr(i[j:j+rlens])
             for j in inds
         ])
         y = X[:, -1, :].copy()

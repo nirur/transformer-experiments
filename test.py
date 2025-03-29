@@ -3,10 +3,11 @@ import data
 import keras
 import numpy as np
 
-mdnum = "04" #main.mdnum
+mdnum = main.mdnum
 mdl = keras.saving.load_model(f"saved-models/{mdnum}.keras")
 
-text = input("> ")
+#text = input("> ")
+text = "Once upon a time there was a "
 overallS = text
 text = text[-data.rlens:]
 text = " "*(data.rlens-len(text)) + text
