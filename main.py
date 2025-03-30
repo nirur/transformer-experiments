@@ -2,29 +2,35 @@ import const
 import data
 import model
 import keras
-from keras import layers, activations
+from keras import optimizers, losses, metrics
 
-@keras.saving.register_keras_serializable("mqe")
-def mqe(y_true, y_pred):
-    return ((10*(y_true-y_pred))**4).mean()
+#@keras.saving.register_keras_serializable()
+#def mqe(y_true, y_pred):
+#    return ((10*(y_true-y_pred))**4).mean()
 
 def compile_model(mdl):
     mdl.compile(
-        optimizer=keras.optimizers.Adamax(
-            learning_rate=keras.optimizers.schedules.ExponentialDecay(
-                3e-4,
-                1e5,
-                0.8,
-                False,
-            ),
+        optimizer=optimizers.Adamax(
+            learning_rate=3e-4,
+            weight_decay=0.01,
+            epsilon=1e-8,
+            #learning_rate=keras.optimizers.schedules.ExponentialDecay(
+            #    1e-3,
+            #    1e2,
+            #    0.8,
+            #    False,
+            #),
         ),
-        loss=
-            mqe,
+        loss=losses.CategoricalCrossentropy(
+            from_logits=True,
+            reduction="mean",
+        ),
         metrics=[
             'categorical_accuracy',
-            'false_negatives',
-            'mse',
-            'kl_divergence',
+            #'false_negatives',
+            #'kl_divergence'
+            #mqe,
+            #tce,
         ],
     )
 
@@ -36,9 +42,9 @@ if __name__=='__main__':
     print("MODEL GENERATED")
 
     mdl.fit(
-        data.data_generator(),
-        epochs=30,
-        steps_per_epoch=2000,
+        data.file_generator(),
+        epochs=50,
+        steps_per_epoch=100,
         callbacks=[
             keras.callbacks.ModelCheckpoint(
                 fp,
@@ -47,5 +53,7 @@ if __name__=='__main__':
                 save_freq="epoch",
             ),
         ],
+        validation_data=next(iter(
+            data.file_generator(split="test")
+        )),
     )
-    mdl.save(fp)

@@ -6,18 +6,16 @@ from keras import layers, activations, ops
 
 inf = float('inf')
 
-@keras.saving.register_keras_serializable("Attentionx1")
+@keras.saving.register_keras_serializable()
 class Attention(layers.Layer):
-    def __init__(self, hdm, odm, **kwargs):
+    def __init__(self, hdm, **kwargs):
         super().__init__(**kwargs)
         self.hdm = hdm
-        self.odm = odm
 
     def build(self, input_shape):
         ln = self.ln = input_shape[1]
         idm = input_shape[2]
         hdm = self.hdm
-        odm = self.odm
         
         self.k = self.add_weight(
             shape=(idm, hdm),
@@ -29,30 +27,36 @@ class Attention(layers.Layer):
             initializer='random_normal',
             trainable=True,
         )
-        self.v = self.add_weight(
-            shape=(idm, idm),
+        self.v1 = self.add_weight(
+            shape=(idm, hdm),
             initializer='random_normal',
             trainable=True,
         )
+        self.v2 = self.add_weight(
+            shape=(hdm, idm),
+            initializer='random_normal',
+            trainable=True,
+        )
+        self.subs = np.zeros((ln,ln))
+        for i in range(ln):
+            self.subs[i, i+1:] = -inf
     
     def call(self, i):
         T = lambda x: keras.ops.transpose(x, axes=(0,2,1))
         keys = T(i @ self.k)
         queries = i @ self.q
         act = queries @ keys
-        #for di in range(self.ln):
-        #    act.at[:, di, di+1:].set(-inf)
+        act = (act + self.subs) / self.hdm**0.5
         act = activations.softmax(act)
-        vls = i @ self.v
-        ret = (act @ vls) + i
-        return ret
+        vls = i @ self.v1 @ self.v2
+        return act @ vls
 
-@keras.saving.register_keras_serializable("AttentionxN")
+@keras.saving.register_keras_serializable()
 class MHAttention(layers.Layer):
-    def __init__(self, hdm, odm, heads, **kwargs):
+    def __init__(self, hdm, heads, **kwargs):
         super().__init__(**kwargs)
         self.heads = [
-            Attention(hdm, odm)
+            Attention(hdm)
             for i in range(heads)
         ]
     
@@ -61,61 +65,41 @@ class MHAttention(layers.Layer):
             h.build(input_shape)
     
     def call(self, i):
-        return ops.concatenate([ly(i) for ly in self.heads], axis=-1)
+        return sum([ly(i) for ly in self.heads])
 
-@keras.saving.register_keras_serializable("PosEncode")
+@keras.saving.register_keras_serializable()
 class PosEncode(layers.Layer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
     
     def build(self, input_shape):
         ln = input_shape[1]
-        self.id = np.array([
-            [
-                [
-                    (row==col)
-                    for col in range(ln)
-                ]
-                for row in range(ln)
-            ]
-            for ly in range(input_shape[0])
-        ])
+        self.id = np.eye(ln)[None, :, :]
     
     def call(self, i):
-        return ops.concatenate((i, self.id[:i.shape[0], :, :]), axis=-1)
+        return ops.concatenate((i, np.repeat(self.id, i.shape[0], axis=0)), axis=-1)
 
 def gen_model():
-    osz = data.mxcap-data.mncap+1
-    model = keras.Sequential(
-        [
-            PosEncode(),
-            layers.Dense(500, activation="leaky_relu"),
-            layers.BatchNormalization(),
-            layers.Dense(500, activation="leaky_relu"),
-            layers.BatchNormalization(),
-            
-            MHAttention(10, 500, 4),
-            layers.BatchNormalization(),
-            layers.Dense(500, activation="leaky_relu"),
-            layers.BatchNormalization(),
-            layers.Dense(500, activation="leaky_relu"),
-            layers.BatchNormalization(),
-            MHAttention(10, 500, 4),
-            layers.BatchNormalization(),
-            layers.Dense(500, activation="leaky_relu"),
-            layers.BatchNormalization(),
-            layers.Dense(500, activation="leaky_relu"),
-            layers.BatchNormalization(),
-            MHAttention(10, 500, 4),
-            layers.Dense(500, activation="leaky_relu"),
-            layers.BatchNormalization(),
-            layers.Dense(500, activation="leaky_relu"),
-            layers.BatchNormalization(),
-            
-            layers.Dense(data.span, activation="leaky_relu"),
-            layers.BatchNormalization(),
-            layers.Softmax(),
-            layers.BatchNormalization(),
-        ]
-    )
+    enc_dim = 64
+    m = inp = keras.Input(shape=(data.rlens, data.span))
+    
+    m = PosEncode()(m)
+    m = layers.Dense(enc_dim, use_bias=False)(m)
+    
+    for i in range(4):
+        m = m + MHAttention(16, 4)(m)
+        m2 = layers.Dense(256, activation="relu")(m)
+        m2 = layers.Dense(enc_dim)(m2)
+        m = m + m2
+        m = layers.LayerNormalization()(m)
+        m = layers.LayerNormalization()(m)
+    
+    m = layers.LayerNormalization()(m)
+    m = layers.Dense(data.span)(m)
+    #m = layers.BatchNormalization()(m)
+    #m = layers.Softmax()(m)
+    #m = layers.BatchNormalization()(m)
+    
+    model = keras.Model(inputs=inp, outputs=m)
+    model.summary()
     return model
