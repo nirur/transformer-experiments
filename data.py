@@ -7,9 +7,7 @@ import keras
 #dset = { "path": "roneneldan/TinyStories", }
 #dset = {"path": "HuggingFaceFW/fineweb", "name": "sample-10BT", "streaming": True} #"CC-MAIN-2024-10"
 rlens = 32
-batch = 16
-
-temp = 1
+batch = 64
 
 #mncap = 0
 #mxcap = 126
@@ -32,15 +30,14 @@ def fromNum(i):
     return ret
 
 def onehot(c):
-    o = toNum(c)
     out = np.zeros(shape=(span,))
-    out[o] = 1
+    out[toNum(c)] = 1
     return out
 
 def arr(seq):
     return np.array([onehot(s) for s in seq])
 
-def data_generator(split="train"):
+def data_generator_(split="train"):
     dst = ds.load_dataset(**dset, split=split)
     dst = dst.shuffle()
     for i in dst:
@@ -75,7 +72,7 @@ def file_generator(split="train",fl="shakespeare.txt"):
     inds = list(range(l))
     l2 = len(inds)
     i = 0
-    while True:
+    while split=="train" or i < l2:
         if i>=l2:
             random.shuffle(inds)
             i = 0
@@ -87,12 +84,14 @@ def file_generator(split="train",fl="shakespeare.txt"):
         yield x, y
         i += batch
 
-def interpret(charr):
-    ind = random.choices(range(span), keras.ops.softmax(charr/temp))
-    return fromNum(*ind)
+def _interp(charr):
+    ind = np.argmax(charr)
+    return fromNum(ind)
 
-def toString(word):
+def interpret(word):
+    if word.ndim==1:
+        return _interp(word)
     s = ""
     for character in word:
-        s += interpret(character)
-    return s[-100:]
+        s += _interp(character)
+    return s

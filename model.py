@@ -40,6 +40,11 @@ class Attention(layers.Layer):
         self.subs = np.zeros((ln,ln))
         for i in range(ln):
             self.subs[i, i+1:] = -inf
+        #self.vb = self.add_weight(
+        #    shape=(ln, hdm),
+        #    initializer='random_normal',
+        #    trainable=True,
+        #)
     
     def call(self, i):
         T = lambda x: keras.ops.transpose(x, axes=(0,2,1))
@@ -63,39 +68,53 @@ class MHAttention(layers.Layer):
     def build(self, input_shape):
         for h in self.heads:
             h.build(input_shape)
+        self.bias = self.add_weight(
+            shape=(input_shape[-1],),
+            initializer='random_normal',
+            trainable=True,
+        )
     
     def call(self, i):
-        return sum([ly(i) for ly in self.heads])
+        return sum([ly(i) for ly in self.heads]) + self.bias
 
 @keras.saving.register_keras_serializable()
 class PosEncode(layers.Layer):
-    def __init__(self, **kwargs):
+    def __init__(self, enc_dim, **kwargs):
         super().__init__(**kwargs)
+        self.enc_dim = enc_dim
     
     def build(self, input_shape):
-        ln = input_shape[1]
-        self.id = np.eye(ln)[None, :, :]
+        self.embedding = self.add_weight(
+            shape=(input_shape[-1], self.enc_dim),
+            initializer='ones',
+            trainable=True,
+        )
+        self.bias = self.add_weight(
+            shape=(input_shape[1], self.enc_dim),
+            initializer='zeros',
+            trainable=True,
+        )
     
     def call(self, i):
-        return ops.concatenate((i, np.repeat(self.id, i.shape[0], axis=0)), axis=-1)
+        return (i @ self.embedding) + self.bias
 
 def gen_model():
     enc_dim = 64
     m = inp = keras.Input(shape=(data.rlens, data.span))
     
-    m = PosEncode()(m)
-    m = layers.Dense(enc_dim, use_bias=False)(m)
+    m = PosEncode(enc_dim)(m)
     
     for i in range(4):
         m = m + MHAttention(16, 4)(m)
-        m2 = layers.Dense(256, activation="relu")(m)
+        m = layers.LayerNormalization()(m)
+        m2 = layers.Dense(256)(m)
+        m2 = layers.ReLU()(m2)
         m2 = layers.Dense(enc_dim)(m2)
         m = m + m2
         m = layers.LayerNormalization()(m)
-        m = layers.LayerNormalization()(m)
     
-    m = layers.LayerNormalization()(m)
     m = layers.Dense(data.span)(m)
+    m = layers.LayerNormalization()(m)
     #m = layers.BatchNormalization()(m)
     #m = layers.Softmax()(m)
     #m = layers.BatchNormalization()(m)
