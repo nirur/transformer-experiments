@@ -1,12 +1,10 @@
 import const
-import datasets as ds
 import random
 import numpy as np
 import keras
+import datasets as ds
 
-#dset = { "path": "roneneldan/TinyStories", }
-#dset = {"path": "HuggingFaceFW/fineweb", "name": "sample-10BT", "streaming": True} #"CC-MAIN-2024-10"
-rlens = 32
+rlens = 256
 batch = 64
 
 #mncap = 0
@@ -25,7 +23,7 @@ def toNum(c):
     return ret
 
 def fromNum(i):
-    #ret = chr(ind+mncap)
+    #ret = chr(i+mncap)
     ret = s[i]
     return ret
 
@@ -37,27 +35,21 @@ def onehot(c):
 def arr(seq):
     return np.array([onehot(s) for s in seq])
 
-def data_generator_(split="train"):
-    dst = ds.load_dataset(**dset, split=split)
+def data_generator(dset_conf):
+    dst = ds.load_dataset(**dset_conf)
     dst = dst.shuffle()
     for i in dst:
         i = i['text']
-        #seq = np.array([onehot(j) for j in i])
         l = len(i)
-        #for j in range(l-rlens):
-        #    X = seq[j:j+rlens+1].copy()
-        #    y = X[-1].copy()
-        #    X[-1] = 0
-        #    yield X, y
         if l<=rlens:
             continue
-        inds = random.choices(range(l-rlens), k=batch)
-        v = np.array([
-            arr(i[j:j+rlens+1])
-            for j in inds
-        ])
-        x, y = v[:, :-1, :], v[:, 1:, :]
-        yield x, y
+        for k in range(0, l-rlens-batch+1, batch):
+            v = np.array([
+                arr(i[j:j+rlens+1])
+                for j in range(k, k+batch)
+            ])
+            x, y = v[:, :-1, :], v[:, 1:, :]
+            yield x, y
 
 def file_generator(split="train",fl="shakespeare.txt"):
     with open(fl) as f:

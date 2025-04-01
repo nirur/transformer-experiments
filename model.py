@@ -40,11 +40,6 @@ class Attention(layers.Layer):
         self.subs = np.zeros((ln,ln))
         for i in range(ln):
             self.subs[i, i+1:] = -inf
-        #self.vb = self.add_weight(
-        #    shape=(ln, hdm),
-        #    initializer='random_normal',
-        #    trainable=True,
-        #)
     
     def call(self, i):
         T = lambda x: keras.ops.transpose(x, axes=(0,2,1))
@@ -99,26 +94,27 @@ class PosEncode(layers.Layer):
         return (i @ self.embedding) + self.bias
 
 def gen_model():
-    enc_dim = 64
+    enc_dim = 384
     m = inp = keras.Input(shape=(data.rlens, data.span))
     
     m = PosEncode(enc_dim)(m)
     
-    for i in range(4):
-        m = m + MHAttention(16, 4)(m)
-        m = layers.LayerNormalization()(m)
-        m2 = layers.Dense(256)(m)
-        m2 = layers.ReLU()(m2)
+    for i in range(6):
+        m1 = m
+        m1 = MHAttention(64, 6)(m1)
+        m1 = layers.LayerNormalization()(m1)
+        m = m + m1
+        
+        m2 = m
+        m2 = layers.Dense(4*enc_dim)(m2)
+        m2 = activations.gelu(m2)
         m2 = layers.Dense(enc_dim)(m2)
+        m2 = layers.Dropout(0.1)(m2)
+        m2 = layers.LayerNormalization()(m2)
         m = m + m2
-        m = layers.LayerNormalization()(m)
     
     m = layers.Dense(data.span)(m)
     m = layers.LayerNormalization()(m)
-    #m = layers.BatchNormalization()(m)
-    #m = layers.Softmax()(m)
-    #m = layers.BatchNormalization()(m)
     
     model = keras.Model(inputs=inp, outputs=m)
-    model.summary()
     return model

@@ -8,7 +8,7 @@ from numpy import array as a
 import time
 import random
 
-mdnum = main.mdnum
+mdnum = "10" #main.mdnum
 mdl = keras.saving.load_model(f"saved-models/{mdnum}.keras")
 
 def snap(arr):
@@ -27,15 +27,13 @@ def plug(curr: np.ndarray, snap_prev=False):
             snap(out[i])
     return out
 
-#mdl.evaluate(data.file_generator("validation"))
-text = np.zeros((data.rlens, data.span))
-text[0, 0] = 1
-for i in range(1,data.rlens):
-    out = plug(text, True)
-    text[i] = out[i]
+mdl.evaluate(data.file_generator("validation"))
+#seed_text = "If your model has multiple outputs, you can specify different losses and metrics for each output, and you can modulate the contribution of each output to the total loss of the model."
+# Source: Keras API
 
-print(data.interpret(text), end="", flush=True)
-for i in range(2000):
+text = data.arr("\n"*data.rlens)
+#data.arr(seed_text[-data.rlens:])
+for _ in range(2000):
     append = plug(text)[-1]
     print(data.interpret(append), end="", flush=True)
     text[:-1] = text[1:]
