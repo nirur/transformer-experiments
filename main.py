@@ -1,40 +1,66 @@
 import const
 import data
 import model
+import math
+import numpy as np
 import keras
 from keras import optimizers, losses, metrics
 
-#dset_conf = { "path": "roneneldan/TinyStories", }
-dset_conf = {
-    "path": "HuggingFaceFW/fineweb",
-    "name": "CC-MAIN-2024-10",
-    "split": "train",
-    "streaming": True,
-}
-dset_conf_mini = {**dset_conf, "name": "sample-10BT"}
+#import jax
+#from jax.experimental import mesh_utils
+#from jax.sharding import Mesh
+#from jax.sharding import NamedSharding
+#from jax.sharding import PartitionSpec as P
 
-mdnum = '13'
-fp = f'saved-models/{mdnum}.keras'
-if __name__=='__main__':
+def main():
     mdl = model.gen_model()
-    mdl.compile(
-        optimizer=optimizers.Adadelta(learning_rate=1.0),
-        loss=losses.CategoricalCrossentropy(from_logits=True),
-    )
-    mdl.summary()
+    compile_model(mdl)
+    #mdl.summary()
     
+    train, val = data.fetch(data.configs[0])
     mdl.fit(
-        data.data_generator(dset_conf),
+        train,
         epochs=100,
-        steps_per_epoch=100,
+        steps_per_epoch=500,
         callbacks=[
             keras.callbacks.ModelCheckpoint(
-                fp,
+                const.fp,
                 monitor="val_loss",
                 save_best_only=True,
                 save_freq="epoch",
             ),
         ],
-        validation_data=data.data_generator(dset_conf_mini),
-        validation_steps=5,
+        validation_data=val,
+        validation_steps=10,
     )
+
+cc_k = losses.CategoricalCrossentropy(
+    from_logits=True,
+    reduction=None,
+)
+weight = np.array([n**-2 for n in range(const.rlens, 0, -1)])
+weight *= 6*math.pi**-2
+@keras.saving.register_keras_serializable()
+def cce(y_true, y_pred):
+    out = cc_k(y_true, y_pred)
+    out *= weight
+    return out.sum(axis=1).mean()
+
+def compile_model(mdl):
+    mdl.compile(
+        #optimizer=optimizers.Adadelta(1.0),
+        optimizer=optimizers.AdamW(
+            learning_rate=3e-3,
+        ),
+        loss=cce,
+        metrics=[
+            losses.CategoricalCrossentropy(
+                from_logits=True,
+                name='cce',
+            ),
+        ],
+        jit_compile=False,
+    )
+
+if __name__=='__main__':
+    main()

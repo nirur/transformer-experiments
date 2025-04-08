@@ -1,89 +1,144 @@
 import const
-import random
 import numpy as np
-import keras
+import tiktoken
 import datasets as ds
+import pickle
 
-rlens = 256
-batch = 64
+val_prop = 10 # 1/val_prop = proportion of data that goes to validation
+span = 1024 #50257
+train_tk = False
 
-#mncap = 0
-#mxcap = 126
-#mncap = 32
-#mxcap = 122
-#span = mxcap-mncap+1
+configs = [
+    {
+        "path": "openwebtext",
+        "streaming": True,
+        "split": "train",
+    },
+    {
+        "path": "roneneldan/TinyStories",
+    },
+    {
+        "path": "HuggingFaceFW/fineweb",
+        "name": "CC-MAIN-2024-10",
+        "split": "train",
+        "streaming": True,
+    },
+    {
+        "path": "HuggingFaceFW/fineweb",
+        "name": "sample-10BT",
+        "split": "train",
+        "streaming": True,
+    },
+]
 
-s = "\n !$&',-.3:;?ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-enc = {c:i for i,c in enumerate(s)}
-span = len(s)
-
-def toNum(c):
-    #ret = min(max(ord(c),mncap),mxcap)-mncap
-    ret = enc[c]
-    return ret
-
-def fromNum(i):
-    #ret = chr(i+mncap)
-    ret = s[i]
-    return ret
-
-def onehot(c):
-    out = np.zeros(shape=(span,))
-    out[toNum(c)] = 1
-    return out
-
-def arr(seq):
-    return np.array([onehot(s) for s in seq])
-
-def data_generator(dset_conf):
-    dst = ds.load_dataset(**dset_conf)
-    dst = dst.shuffle()
-    for i in dst:
-        i = i['text']
-        l = len(i)
-        if l<=rlens:
-            continue
-        for k in range(0, l-rlens-batch+1, batch):
-            v = np.array([
-                arr(i[j:j+rlens+1])
-                for j in range(k, k+batch)
-            ])
-            x, y = v[:, :-1, :], v[:, 1:, :]
-            yield x, y
-
-def file_generator(split="train",fl="shakespeare.txt"):
-    with open(fl) as f:
-        dst = f.read()
-    l = len(dst)
-    if split=="train":
-        dst = dst[:l*3//4]
-    else:
-        dst = dst[l*3//4:]
-    dst = arr(dst)
-    l = len(dst) - rlens
-    inds = list(range(l))
-    l2 = len(inds)
-    i = 0
-    while split=="train" or i < l2:
-        if i>=l2:
-            random.shuffle(inds)
+#ec = tiktoken.get_encoding("gpt2")
+#ec = "\n !$&',-.3:;?ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+class Tokenizer:
+    def __init__(self, load_from=None):
+        self.vocab = [[x] for x in range(256)]
+        if load_from:
+            with open(load_from, 'rb') as f:
+                self.vocab = pickle.load(f)
+        self.bloc = None
+    
+    def train(self, data):
+        l = []
+        for i,t in enumerate(data):
+            if i>100:
+                break
+            t = t['text']
+            t = list(t.encode('utf-8'))
+            l.append(t)
+        print(len(self.vocab))
+        while len(self.vocab) < span:
+            d = {}
+            for t in l:
+                for a,b in zip(t, t[1:]):
+                    d[a,b] = d.get((a,b), 0)+1
+            p1, p2 = max(d.keys(), key=d.get)
+            rep = len(self.vocab)
+            self.vocab.append([p1, p2])
             i = 0
-        v = np.array([
-            dst[j:j+rlens+1]
-            for j in inds[i:i+batch]
-        ])
-        x, y = v[:, :-1, :], v[:, 1:, :]
-        yield x, y
-        i += batch
+            while i<len(l)-1:
+                if l[i]==p1 and l[i+1]==p2:
+                    l = l[:i] + [rep] + l[i+2:]
+                i+=1
+            if len(self.vocab)%64==0: print(len(self.vocab))
+        with open(const.fp_tk, 'wb') as f:
+            pickle.dump(self.vocab, f)
+    
+    def encode(self, s):
+        if not self.bloc:
+            self.bloc = self.vocab[:256] + [0]*(span-256)
+            for i in range(256, span):
+                p,q = self.vocab[i]
+                self.bloc[i] = self.bloc[p]+self.bloc[q]
+        t = list(s.encode('utf-8'))
+        for i in range(span-1, 255, -1):
+            sub = self.vocab[i]
+            ls = len(sub)
+            j = 0
+            while j<len(t):
+                if t[j:j+ls]==sub:
+                    t = t[:j] + [i] + t[j+ls:]
+                j+=1
+        oneh = np.zeros((len(t), span))
+        for ind,val in enumerate(t):
+            oneh[ind,val] = 1
+        return oneh
+    
+    def decode(self, arr):
+        vals = [np.argmax(l) for l in arr]
+        for i in range(span-1, 255, -1):
+            j = 0
+            while j<len(vals):
+                if vals[j]==i:
+                    vals = vals[:j] + self.vocab[i] + vals[j+1:]
+                j+=1
+        return bytes(vals).decode('utf-8', errors='replace')
+        #return ec.decode([np.argmax(arr)])
+        #return ec[np.argmax(arr)]
 
-def _interp(charr):
-    ind = np.argmax(charr)
-    return fromNum(ind)
+enc = Tokenizer()
 
-def interpret(word):
-    if word.ndim==1:
-        return _interp(word)
-    s = ""
-    for character in word:
-        s += _interp(character)
-    return s
+def preprocess(text):
+    t = text['text']
+    t = enc.encode(t)
+    for j in range(0, len(t)-const.rlens-const.batch, const.batch):
+        xi = []
+        yi = []
+        for k in range(const.batch):
+            v = t[j:j+const.rlens+1]
+            x = v[:-1]
+            y = v[1:]
+            xi.append(x)
+            yi.append(y)
+        #while True:
+        yield np.array(xi), np.array(yi)
+
+def loader(*dsts):
+    xi = yi = None
+    while True:
+        for d in dsts:
+            for i in d:
+                yield from preprocess(i)
+        print('cycled')
+
+def fetch(cfg):
+    global enc
+    dst = ds.load_dataset(**cfg)
+    d1 = [dst.shard(val_prop, i) for i in range(1,val_prop)]
+    d2 = dst.shard(val_prop, 0)
+    #with open('raw-data/shakespeare.txt') as f:
+    #    dst = f.read()
+    #l = len(dst)
+    #ind = int(l*0.99)
+    #d1 = [dst[:ind]] # It's a single training sample
+    #d2 = [[dst[ind:]]] # A single shard with a single training sample
+    if train_tk:
+        enc.train(d1[-1])
+        print('tokenizer trained')
+    else:
+        enc = Tokenizer(const.fp_tk)
+    assert len(enc.vocab)==span
+    return loader(*d1[:-1]), loader(d2)

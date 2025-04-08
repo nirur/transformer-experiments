@@ -1,6 +1,7 @@
 import const
-import main
 import data
+import model
+import main
 import keras
 from keras.ops import softmax as S
 import numpy as np
@@ -8,7 +9,7 @@ from numpy import array as a
 import time
 import random
 
-mdnum = "10" #main.mdnum
+mdnum = const.mdnum
 mdl = keras.saving.load_model(f"saved-models/{mdnum}.keras")
 
 def snap(arr):
@@ -27,15 +28,14 @@ def plug(curr: np.ndarray, snap_prev=False):
             snap(out[i])
     return out
 
-mdl.evaluate(data.file_generator("validation"))
-#seed_text = "If your model has multiple outputs, you can specify different losses and metrics for each output, and you can modulate the contribution of each output to the total loss of the model."
-# Source: Keras API
+#mdl.evaluate(main.val_gen)
+data.enc = data.Tokenizer(const.fp_tk)
 
-text = data.arr("\n"*data.rlens)
-#data.arr(seed_text[-data.rlens:])
-for _ in range(2000):
-    append = plug(text)[-1]
-    print(data.interpret(append), end="", flush=True)
-    text[:-1] = text[1:]
-    text[-1] = append
+text = np.zeros((const.rlens, data.span))
+text[:, 10] = 1
+for i in range(500):
+    if not i%20: print(i)
+    append = plug(text[-const.rlens:])[-1:]
+    text = np.concatenate((text, append), axis=0)
+print(data.enc.decode(text[const.rlens:]), end="", flush=True)
 print()
