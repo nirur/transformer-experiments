@@ -29,13 +29,13 @@ def plug(curr: np.ndarray, snap_prev=False):
     return out
 
 #mdl.evaluate(main.val_gen)
-data.enc = data.Tokenizer(const.fp_tk)
+#data.enc = data.Tokenizer(const.fp_tk)
 
 text = np.zeros((const.rlens, data.span))
 text[:, 10] = 1
 for i in range(500):
-    if not i%20: print(i)
+    #if not i%20: print(i)
     append = plug(text[-const.rlens:])[-1:]
     text = np.concatenate((text, append), axis=0)
-print(data.enc.decode(text[const.rlens:]), end="", flush=True)
+    print(data.enc.decode(text[-1:])[0], end="", flush=True)
 print()

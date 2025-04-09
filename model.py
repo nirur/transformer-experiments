@@ -6,7 +6,7 @@ from keras import \
     layers as L, activations as A, ops as O, initializers as I
 
 def gen_model():
-    enc_dim = 256
+    enc_dim = 64 #256
     m = inp = keras.Input(shape=(const.rlens, data.span))
     
     tied_encode = PosEncode(enc_dim)
@@ -15,14 +15,14 @@ def gen_model():
     ly = 4
     for i in range(1,ly+1):
         m1 = m
-        m1 = MHAttn(8, 1, ly**-0.5)(m1)
+        m1 = MHAttn(4, 1, ly**-0.5)(m1)
         m1 = L.LayerNormalization()(m1)
-        if True:#i%4:
-            m += m1
-        else:
-            m1 = A.tanh(m1)
-            m1 = L.LayerNormalization()(m1)
-            m *= 1 + m1
+        #if True:#i%4:
+        m += m1
+        #else:
+        #    m1 = A.tanh(m1)
+        #    m1 = L.LayerNormalization()(m1)
+        #    m *= 1 + m1
         #m = L.LayerNormalization()(m)
         
         m2 = m
